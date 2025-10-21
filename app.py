@@ -6,13 +6,19 @@ users = []
 
 @app.route('/')
 def hello():
-    return render_template('index.html', users=users)
+    return render_template('index.html', users=users, enumerate=enumerate)
 
 @app.route('/add_user', methods=['POST'])
 def add_user():
     name = request.form.get('name')
     if name:
         users.append(name)
+    return redirect(url_for('hello'))
+
+@app.route('/delete_user/<int:index>', methods=['POST'])
+def delete_user(index):
+    if 0 <= index < len(users):
+        users.pop(index)
     return redirect(url_for('hello'))
 
 if __name__ == '__main__':

@@ -58,10 +58,38 @@
             font-size: 1.1em;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             transition: transform 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         
         .users-list li:hover {
             transform: translateX(5px);
+        }
+        
+        .user-name {
+            flex: 1;
+        }
+        
+        .delete-btn {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .delete-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+        
+        .delete-btn:active {
+            transform: scale(0.95);
         }
         
         .empty-message {
@@ -120,8 +148,13 @@
         <h2>📋 Users List</h2>
         {% if users %}
         <ul class="users-list">
-            {% for user in users %}
-            <li>{{ user }}</li>
+            {% for index, user in enumerate(users) %}
+            <li>
+                <span class="user-name">{{ user }}</span>
+                <form action="/delete_user/{{ index }}" method="post" style="display: inline; margin: 0;">
+                    <button type="submit" class="delete-btn">🗑️ Delete</button>
+                </form>
+            </li>
             {% endfor %}
         </ul>
         {% else %}

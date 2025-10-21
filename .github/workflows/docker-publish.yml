@@ -1,4 +1,4 @@
-name: Build and Push to GHCR
+name: Build and Push to Docker Hub
 
 on:
   push:
@@ -9,8 +9,8 @@ on:
     branches: [ main, master ]
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  DOCKER_USERNAME: moustaphafal
+  IMAGE_NAME: flask-helloworld
 
 jobs:
   test:
@@ -37,26 +37,22 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     needs: test
-    permissions:
-      contents: read
-      packages: write
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
     
-    - name: Log in to GitHub Container Registry
+    - name: Log in to Docker Hub
       uses: docker/login-action@v2
       with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        username: ${{ env.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_TOKEN }}
     
     - name: Extract metadata for Docker
       id: meta
       uses: docker/metadata-action@v4
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        images: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
         tags: |
           type=ref,event=branch
           type=ref,event=pr

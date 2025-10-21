@@ -21,5 +21,12 @@ def delete_user(index):
         users.pop(index)
     return redirect(url_for('hello'))
 
+@app.route('/edit_user/<int:index>', methods=['POST'])
+def edit_user(index):
+    new_name = request.form.get('name')
+    if 0 <= index < len(users) and new_name:
+        users[index] = new_name
+    return redirect(url_for('hello'))
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

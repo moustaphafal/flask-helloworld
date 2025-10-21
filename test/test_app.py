@@ -38,3 +38,26 @@ def test_multiple_users(client):
     response = client.get('/')
     assert b'Alice' in response.data
     assert b'Bob' in response.data
+
+def test_delete_user(client):
+    """Test deleting a user."""
+    from app import users
+    users.clear()  # Clear users before test
+    client.post('/add_user', data={'name': 'Charlie'}, follow_redirects=True)
+    client.post('/delete_user/0', follow_redirects=True)
+    response = client.get('/')
+    assert response.status_code == 200
+    # Check that user is actually removed from the list
+    assert len(users) == 0
+
+def test_edit_user(client):
+    """Test editing a user."""
+    from app import users
+    users.clear()  # Clear users before test
+    client.post('/add_user', data={'name': 'OldName'}, follow_redirects=True)
+    client.post('/edit_user/0', data={'name': 'NewName'}, follow_redirects=True)
+    response = client.get('/')
+    assert response.status_code == 200
+    # Check that user is actually edited in the list
+    assert len(users) == 1
+    assert users[0] == 'NewName'

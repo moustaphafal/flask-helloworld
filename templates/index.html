@@ -71,6 +71,52 @@
             flex: 1;
         }
         
+        .user-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .edit-form {
+            display: none;
+            flex: 1;
+            gap: 10px;
+        }
+        
+        .edit-form input {
+            flex: 1;
+            padding: 8px 12px;
+            border: 2px solid white;
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        
+        .edit-form button {
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+        
+        .action-btn {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 2px solid white;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.05);
+        }
+        
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+        
         .delete-btn {
             padding: 8px 16px;
             background: rgba(255, 255, 255, 0.2);
@@ -150,10 +196,18 @@
         <ul class="users-list">
             {% for index, user in enumerate(users) %}
             <li>
-                <span class="user-name">{{ user }}</span>
-                <form action="/delete_user/{{ index }}" method="post" style="display: inline; margin: 0;">
-                    <button type="submit" class="delete-btn">🗑️ Delete</button>
+                <span class="user-name" id="user-name-{{ index }}">{{ user }}</span>
+                <form class="edit-form" id="edit-form-{{ index }}" action="/edit_user/{{ index }}" method="post">
+                    <input type="text" name="name" value="{{ user }}" required>
+                    <button type="submit">💾 Save</button>
+                    <button type="button" class="action-btn" onclick="toggleEdit({{ index }})">❌ Cancel</button>
                 </form>
+                <div class="user-actions" id="user-actions-{{ index }}">
+                    <button type="button" class="action-btn" onclick="toggleEdit({{ index }})">✏️ Edit</button>
+                    <form action="/delete_user/{{ index }}" method="post" style="display: inline; margin: 0;">
+                        <button type="submit" class="delete-btn">🗑️ Delete</button>
+                    </form>
+                </div>
             </li>
             {% endfor %}
         </ul>
@@ -167,5 +221,23 @@
             <button type="submit">Add</button>
         </form>
     </div>
+    
+    <script>
+        function toggleEdit(index) {
+            const userName = document.getElementById('user-name-' + index);
+            const editForm = document.getElementById('edit-form-' + index);
+            const userActions = document.getElementById('user-actions-' + index);
+            
+            if (editForm.style.display === 'flex') {
+                editForm.style.display = 'none';
+                userName.style.display = 'block';
+                userActions.style.display = 'flex';
+            } else {
+                editForm.style.display = 'flex';
+                userName.style.display = 'none';
+                userActions.style.display = 'none';
+            }
+        }
+    </script>
 </body>
 </html>

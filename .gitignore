@@ -14,3 +14,7 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Docker-publish & ci-cd
+.github/workflows/ci-cd.yml
+.github/workflows/docker-publish.yml

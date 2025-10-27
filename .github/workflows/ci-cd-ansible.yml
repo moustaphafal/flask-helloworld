@@ -75,7 +75,7 @@ jobs:
         cache-to: type=gha,mode=max
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build-and-push
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
     
@@ -83,22 +83,12 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
     
-    - name: Install Ansible
+    - name: Install Ansible if not present
       run: |
-        sudo apt-get update
-        sudo apt-get install -y ansible
-    
-    - name: Setup SSH key
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
-    
-    - name: Update inventory with secrets
-      run: |
-        sed -i "s/YOUR_VM_IP_HERE/${{ secrets.VM_HOST }}/g" ansible/inventory.yml
-        sed -i "s/YOUR_USERNAME_HERE/${{ secrets.VM_USER }}/g" ansible/inventory.yml
+        if ! command -v ansible &> /dev/null; then
+          sudo apt-get update
+          sudo apt-get install -y ansible
+        fi
     
     - name: Deploy with Ansible
       run: |
@@ -109,4 +99,6 @@ jobs:
     - name: Verify deployment
       run: |
         echo "Deployment completed successfully!"
-        echo "Application should be accessible at http://${{ secrets.VM_HOST }}:5000"
+        echo "Application accessible at http://192.168.1.18:5000"
+        sleep 3
+        curl -f http://192.168.1.18:5000 || echo "Warning: Application may still be starting"

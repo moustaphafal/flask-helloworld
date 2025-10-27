@@ -21,7 +21,7 @@ docker run -d \
   moustaphafal/flask-helloworld:latest
 
 echo "✅ Deployment complete!"
-echo "🌐 Access your app at http://192.168.1.18:5000"
+echo "🌐 Access your app at http://192.168.1.20:5000"
 
 # Show logs
 echo ""

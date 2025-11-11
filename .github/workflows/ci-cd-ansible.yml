@@ -88,10 +88,10 @@ jobs:
       uses: peter-evans/create-pull-request@v5
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        commit-message: "🚀 Merge develop to main"
+        commit-message: "🚀 Merge develop to master"
         branch: develop
-        base: main
-        title: "🚀 Auto-deploy: Merge develop to main"
+        base: master
+        title: "🚀 Auto-deploy: Merge develop to master"
         body: |
           ## ✅ All CI/CD checks passed successfully!
           

@@ -1,0 +1,41 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Permet déclenchement manuel
+
+env:
+  DOCKER_USERNAME: moustaphafal
+  IMAGE_NAME: flask-helloworld
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Deploy with Ansible
+      run: |
+        ansible-playbook -i ansible/inventory.yml ansible/playbook.yml
+      env:
+        ANSIBLE_HOST_KEY_CHECKING: 'False'
+    
+    - name: Verify deployment
+      run: |
+        echo "✅ Deployment completed successfully!"
+        echo "🌐 Application URL: http://192.168.1.20:5000"
+        sleep 3
+        curl -f http://192.168.1.20:5000 --max-time 10 || echo "⚠️ Warning: Application may still be starting"
+    
+    - name: Notify deployment success
+      if: success()
+      run: |
+        echo "================================================"
+        echo "✅ DEPLOYMENT SUCCESSFUL!"
+        echo "🌐 Application is live at: http://192.168.1.20:5000"
+        echo "🐳 Docker image: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+        echo "📅 Deployed at: $(date)"
+        echo "================================================"

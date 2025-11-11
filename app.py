@@ -4,6 +4,7 @@ app = Flask(__name__)
 
 users = []
 
+# User management routes
 @app.route('/')
 def hello():
     return render_template('index.html', users=users, enumerate=enumerate)

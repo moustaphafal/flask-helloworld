@@ -2,8 +2,8 @@ name: Deploy to Production
 
 on:
   push:
-    branches: [ master, main ]
-  workflow_dispatch:  # Permet déclenchement manuel
+    branches: [ main, master ]  # ✅ Se déclenche quand PR est mergée vers main
+  workflow_dispatch:    # ✅ Permet déclenchement manuel
 
 env:
   DOCKER_USERNAME: moustaphafal
@@ -16,26 +16,126 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Verify merge from develop
+      id: verify-merge
+      run: |
+        echo "================================================"
+        echo "🔍 VERIFYING DEPLOYMENT PREREQUISITES"
+        echo "================================================"
+        
+        # Vérifier que c'est bien un merge depuis develop
+        LAST_COMMIT_MSG=$(git log -1 --pretty=%B)
+        echo "📝 Last commit: $LAST_COMMIT_MSG"
+        
+        # Vérifier si c'est un merge commit
+        if git log -1 --merges | grep -q "Merge"; then
+          echo "✅ Last commit is a merge commit"
+          
+          if echo "$LAST_COMMIT_MSG" | grep -qi "develop"; then
+            echo "✅ Merged from develop branch"
+          else
+            echo "⚠️ Merge is NOT from develop"
+          fi
+        else
+          echo "⚠️ Not a merge commit (direct push?)"
+        fi
+        
+        # Vérifier via API GitHub
+        COMMIT_SHA="${{ github.sha }}"
+        PR_INFO=$(gh pr list \
+          --state merged \
+          --base main \
+          --json number,headRefName,mergeCommit,labels \
+          --jq ".[] | select(.mergeCommit.oid == \"$COMMIT_SHA\")")
+        
+        if [ -n "$PR_INFO" ]; then
+          PR_NUMBER=$(echo $PR_INFO | jq -r '.number')
+          PR_BRANCH=$(echo $PR_INFO | jq -r '.headRefName')
+          PR_LABELS=$(echo $PR_INFO | jq -r '.labels[].name')
+          
+          echo "✅ Merged from PR #$PR_NUMBER (branch: $PR_BRANCH)"
+          echo "📋 Labels: $PR_LABELS"
+          
+          if [ "$PR_BRANCH" != "develop" ]; then
+            echo "❌ ERROR: PR was from '$PR_BRANCH', not 'develop'!"
+            echo "🚫 Deployment cancelled for security reasons"
+            exit 1
+          fi
+          
+          if ! echo "$PR_LABELS" | grep -q "ci-passed"; then
+            echo "⚠️ WARNING: PR does not have 'ci-passed' label"
+          fi
+        else
+          echo "⚠️ No PR metadata found"
+          
+          # Vérifier que le commit existe dans develop
+          git fetch origin develop
+          if git merge-base --is-ancestor $COMMIT_SHA origin/develop; then
+            echo "✅ Commit exists in develop"
+          else
+            echo "❌ ERROR: Commit NOT from develop!"
+            echo "🚫 Deployment cancelled"
+            exit 1
+          fi
+        fi
+        
+        echo "================================================"
+        echo "✅ ALL CHECKS PASSED"
+        echo "================================================"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Deploy with Ansible
       run: |
+        echo "🚀 Starting deployment to production..."
         ansible-playbook -i ansible/inventory.yml ansible/playbook.yml
       env:
         ANSIBLE_HOST_KEY_CHECKING: 'False'
     
     - name: Verify deployment
       run: |
-        echo "✅ Deployment completed successfully!"
+        echo "✅ Ansible playbook executed successfully!"
         echo "🌐 Application URL: http://192.168.1.20:5000"
-        sleep 3
-        curl -f http://192.168.1.20:5000 --max-time 10 || echo "⚠️ Warning: Application may still be starting"
+        echo "⏳ Waiting for application to start..."
+        sleep 5
+        
+        # Retry logic avec timeout
+        for i in {1..5}; do
+          if curl -f http://192.168.1.20:5000 --max-time 10 --silent --output /dev/null; then
+            echo "✅ Application is responding!"
+            exit 0
+          else
+            echo "⏳ Attempt $i/5: Waiting for application..."
+            sleep 3
+          fi
+        done
+        
+        echo "⚠️ Application did not respond after 5 attempts"
+        echo "Check application logs with: docker logs flask-app"
+        exit 1
     
     - name: Notify deployment success
       if: success()
       run: |
         echo "================================================"
         echo "✅ DEPLOYMENT SUCCESSFUL!"
-        echo "🌐 Application is live at: http://192.168.1.20:5000"
+        echo "================================================"
+        echo "🌐 Application: http://192.168.1.20:5000"
         echo "🐳 Docker image: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
         echo "📅 Deployed at: $(date)"
+        echo "👤 Triggered by: ${{ github.actor }}"
+        echo "================================================"
+    
+    - name: Notify deployment failure
+      if: failure()
+      run: |
+        echo "================================================"
+        echo "❌ DEPLOYMENT FAILED!"
+        echo "================================================"
+        echo "Please check the logs above for details"
+        echo "You can also check application logs:"
+        echo "  docker logs flask-app"
         echo "================================================"

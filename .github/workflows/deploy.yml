@@ -3,7 +3,7 @@ name: Deploy to Production
 on:
   push:
     branches: [ main, master ]  # ✅ Se déclenche quand PR est mergée vers main
-  # workflow_dispatch:    # ✅ Permet déclenchement manuel
+  workflow_dispatch:    # ✅ Permet déclenchement manuel
 
 env:
   DOCKER_USERNAME: moustaphafal

@@ -179,6 +179,6 @@ jobs:
           }
         }
         
-        echo "✅ PR merged successfully!"
+        echo "✅ PR merged successfully!" #
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

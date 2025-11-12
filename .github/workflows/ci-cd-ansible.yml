@@ -128,12 +128,6 @@ jobs:
         1. ✅ This PR will be auto-approved
         2. ✅ This PR will be auto-merged
         3. 🚀 Deployment will start automatically after merge
-
-        ---
-        **Automated PR created by CI/CD pipeline**" \
-          --label "automated-pr" \
-          --label "ready-for-review" \
-          --label "ci-passed")
         
         PR_NUMBER=$(echo $PR_URL | grep -oP '\d+$')
         echo "pull-request-url=$PR_URL" >> $GITHUB_OUTPUT

@@ -1,12 +1,10 @@
-name: CI/CD Pipeline with Ansible Deployment
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ develop ]
     tags:
       - 'v*'
-  pull_request:
-    branches: [ main, master ]
 
 env:
   DOCKER_USERNAME: moustaphafal
@@ -73,25 +71,114 @@ jobs:
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
-
-  deploy:
-    runs-on: self-hosted
-    needs: build-and-push
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+  
+  create-pr-to-main:
+    runs-on: ubuntu-latest
+    needs: [test, build-and-push]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
     
-    - name: Deploy with Ansible
+    - name: Check if PR already exists
+      id: check-pr
       run: |
-        ansible-playbook -i ansible/inventory.yml ansible/playbook.yml
+        PR_NUMBER=$(gh pr list \
+          --head develop \
+          --base master \
+          --state open \
+          --json number \
+          --jq '.[0].number // empty')
+        
+        if [ -n "$PR_NUMBER" ]; then
+          echo "pr-exists=true" >> $GITHUB_OUTPUT
+          echo "pull-request-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "ℹ️ PR already exists: #$PR_NUMBER"
+        else
+          echo "pr-exists=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No existing PR found"
+        fi
       env:
-        ANSIBLE_HOST_KEY_CHECKING: 'False'
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Verify deployment
+    - name: Create Pull Request to main
+      if: steps.check-pr.outputs.pr-exists == 'false'
+      id: create-pr
       run: |
-        echo "Deployment completed successfully!"
-        echo "Application accessible at http://192.168.1.20:5000"
-        sleep 3
-        curl -f http://192.168.1.20:5000 || echo "Warning: Application may still be starting"
+        PR_URL=$(gh pr create \
+          --base master \
+          --head develop \
+          --title "🚀 Deploy to Production" \
+          --body "## ✅ All CI/CD checks passed successfully!
+
+        ### Summary
+        - ✅ **Tests**: All tests passed with pytest
+        - ✅ **Build**: Docker image built successfully
+        - ✅ **Push**: Image pushed to Docker Hub
+
+        ### Docker Image
+        \`${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest\`
+
+        ### What happens next?
+        1. ✅ This PR will be auto-approved
+        2. ✅ This PR will be auto-merged
+        3. 🚀 Deployment will start automatically after merge
+
+        ---
+        **Automated PR created by CI/CD pipeline**")
+        
+        PR_NUMBER=$(echo $PR_URL | grep -oP '\d+$')
+        echo "pull-request-url=$PR_URL" >> $GITHUB_OUTPUT
+        echo "pull-request-number=$PR_NUMBER" >> $GITHUB_OUTPUT
+        echo "✅ Created PR #$PR_NUMBER: $PR_URL"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Get PR number
+      id: get-pr
+      run: |
+        if [ "${{ steps.check-pr.outputs.pr-exists }}" == "true" ]; then
+          echo "pull-request-number=${{ steps.check-pr.outputs.pull-request-number }}" >> $GITHUB_OUTPUT
+        else
+          echo "pull-request-number=${{ steps.create-pr.outputs.pull-request-number }}" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Auto-approve PR
+      if: steps.get-pr.outputs.pull-request-number != ''
+      run: |
+        PR_NUMBER=${{ steps.get-pr.outputs.pull-request-number }}
+        echo "Approving PR #$PR_NUMBER..."
+        gh pr review $PR_NUMBER --approve --body "✅ **Automated approval**
+
+        All CI/CD checks passed:
+        - ✅ Tests: Passed
+        - ✅ Build: Successful
+        - ✅ Docker Push: Complete
+
+        Ready for deployment!"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Enable auto-merge and merge PR
+      if: steps.get-pr.outputs.pull-request-number != ''
+      run: |
+        PR_NUMBER=${{ steps.get-pr.outputs.pull-request-number }}
+        echo "Enabling auto-merge for PR #$PR_NUMBER..."
+        
+        gh pr merge $PR_NUMBER --auto --squash || {
+          echo "⚠️ Auto-merge not enabled on repository"
+          echo "Attempting direct merge..."
+          
+          gh pr merge $PR_NUMBER --squash --delete-branch || {
+            echo "❌ Failed to merge PR"
+            echo "Please merge manually at: https://github.com/${{ github.repository }}/pull/$PR_NUMBER"
+            exit 1
+          }
+        }
+        
+        echo "✅ PR merged successfully!" #
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

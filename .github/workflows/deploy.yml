@@ -98,13 +98,13 @@ jobs:
     - name: Verify deployment
       run: |
         echo "✅ Ansible playbook executed successfully!"
-        echo "🌐 Application URL: http://192.168.1.20:5000"
+        echo "🌐 Application URL: http://192.168.1.13:5000"
         echo "⏳ Waiting for application to start..."
         sleep 5
         
         # Retry logic avec timeout
         for i in {1..5}; do
-          if curl -f http://192.168.1.20:5000 --max-time 10 --silent --output /dev/null; then
+          if curl -f http://192.168.1.13:5000 --max-time 10 --silent --output /dev/null; then
             echo "✅ Application is responding!"
             exit 0
           else
@@ -123,7 +123,7 @@ jobs:
         echo "================================================"
         echo "✅ DEPLOYMENT SUCCESSFUL!"
         echo "================================================"
-        echo "🌐 Application: http://192.168.1.20:5000"
+        echo "🌐 Application: http://192.168.1.13:5000"
         echo "🐳 Docker image: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
         echo "📅 Deployed at: $(date)"
         echo "👤 Triggered by: ${{ github.actor }}"

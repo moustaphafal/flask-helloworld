@@ -6,6 +6,10 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 env:
   DOCKER_USERNAME: moustaphafal
   IMAGE_NAME: flask-helloworld
@@ -104,7 +108,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Create Pull Request to main
+    - name: Create Pull Request to master
       if: steps.check-pr.outputs.pr-exists == 'false'
       id: create-pr
       run: |
@@ -122,13 +126,14 @@ jobs:
         ### Docker Image
         \`${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest\`
 
-        ### What happens next?
-        1. ✅ This PR will be auto-approved
-        2. ✅ This PR will be auto-merged
-        3. 🚀 Deployment will start automatically after merge
+        ### Next Steps
+        1. 👀 **Review this PR manually**
+        2. ✅ **Merge when ready**
+        3. 🚀 **Deployment will start automatically after merge**
 
         ---
-        **Automated PR created by CI/CD pipeline**")
+        **📝 Automated PR created by CI/CD pipeline**  
+        *Please review and merge manually*")
         
         PR_NUMBER=$(echo $PR_URL | grep -oP '\d+$')
         echo "pull-request-url=$PR_URL" >> $GITHUB_OUTPUT
@@ -137,48 +142,26 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Get PR number
-      id: get-pr
+    - name: Summary
+      if: steps.check-pr.outputs.pr-exists == 'true' || steps.create-pr.outputs.pull-request-number != ''
       run: |
         if [ "${{ steps.check-pr.outputs.pr-exists }}" == "true" ]; then
-          echo "pull-request-number=${{ steps.check-pr.outputs.pull-request-number }}" >> $GITHUB_OUTPUT
+          PR_NUMBER="${{ steps.check-pr.outputs.pull-request-number }}"
+          echo "ℹ️ PR already exists: #$PR_NUMBER"
         else
-          echo "pull-request-number=${{ steps.create-pr.outputs.pull-request-number }}" >> $GITHUB_OUTPUT
+          PR_NUMBER="${{ steps.create-pr.outputs.pull-request-number }}"
+          echo "✅ PR created successfully: #$PR_NUMBER"
         fi
-    
-    - name: Auto-approve PR
-      if: steps.get-pr.outputs.pull-request-number != ''
-      run: |
-        PR_NUMBER=${{ steps.get-pr.outputs.pull-request-number }}
-        echo "Approving PR #$PR_NUMBER..."
-        gh pr review $PR_NUMBER --approve --body "✅ **Automated approval**
-
-        All CI/CD checks passed:
-        - ✅ Tests: Passed
-        - ✅ Build: Successful
-        - ✅ Docker Push: Complete
-
-        Ready for deployment!"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Enable auto-merge and merge PR
-      if: steps.get-pr.outputs.pull-request-number != ''
-      run: |
-        PR_NUMBER=${{ steps.get-pr.outputs.pull-request-number }}
-        echo "Enabling auto-merge for PR #$PR_NUMBER..."
         
-        gh pr merge $PR_NUMBER --auto --squash || {
-          echo "⚠️ Auto-merge not enabled on repository"
-          echo "Attempting direct merge..."
-          
-          gh pr merge $PR_NUMBER --squash --delete-branch || {
-            echo "❌ Failed to merge PR"
-            echo "Please merge manually at: https://github.com/${{ github.repository }}/pull/$PR_NUMBER"
-            exit 1
-          }
-        }
-        
-        echo "✅ PR merged successfully!" #
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        echo ""
+        echo "================================================"
+        echo "✅ CI/CD Pipeline Completed Successfully!"
+        echo "================================================"
+        echo "📋 Pull Request: #$PR_NUMBER"
+        echo "🔗 URL: https://github.com/${{ github.repository }}/pull/$PR_NUMBER"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Review the PR manually"
+        echo "  2. Merge when ready"
+        echo "  3. Deployment will trigger automatically"
+        echo "================================================"

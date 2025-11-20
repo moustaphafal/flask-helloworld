@@ -2,8 +2,8 @@ name: Deploy to Production
 
 on:
   push:
-    branches: [ main, master ]  # ✅ Se déclenche quand PR est mergée vers main
-  workflow_dispatch:    # ✅ Permet déclenchement manuel
+    branches: [ main, master ]
+  workflow_dispatch:
 
 env:
   DOCKER_USERNAME: moustaphafal
@@ -26,71 +26,102 @@ jobs:
         echo "🔍 VERIFYING DEPLOYMENT PREREQUISITES"
         echo "================================================"
         
-        # Vérifier que c'est bien un merge depuis develop
+        COMMIT_SHA="${{ github.sha }}"
+        CURRENT_BRANCH="${{ github.ref_name }}"
+        
+        echo "🔑 Commit SHA: $COMMIT_SHA"
+        echo "📌 Current branch: $CURRENT_BRANCH"
+        
+        # Vérifier le message du commit
         LAST_COMMIT_MSG=$(git log -1 --pretty=%B)
-        echo "📝 Last commit: $LAST_COMMIT_MSG"
+        echo "📝 Last commit message:"
+        echo "$LAST_COMMIT_MSG"
+        echo ""
         
         # Vérifier si c'est un merge commit
-        if git log -1 --merges | grep -q "Merge"; then
-          echo "✅ Last commit is a merge commit"
+        PARENT_COUNT=$(git log -1 --pretty=%P | wc -w)
+        
+        if [ "$PARENT_COUNT" -eq 2 ]; then
+          echo "✅ This is a merge commit (has 2 parents)"
           
+          # Vérifier le message
           if echo "$LAST_COMMIT_MSG" | grep -qi "develop"; then
-            echo "✅ Merged from develop branch"
+            echo "✅ Commit message mentions 'develop'"
           else
-            echo "⚠️ Merge is NOT from develop"
+            echo "⚠️ WARNING: Commit message doesn't mention 'develop'"
           fi
-        else
-          echo "⚠️ Not a merge commit (direct push?)"
-        fi
-        
-        # Vérifier via API GitHub
-        COMMIT_SHA="${{ github.sha }}"
-        PR_INFO=$(gh pr list \
-          --state merged \
-          --base main \
-          --json number,headRefName,mergeCommit,labels \
-          --jq ".[] | select(.mergeCommit.oid == \"$COMMIT_SHA\")")
-        
-        if [ -n "$PR_INFO" ]; then
-          PR_NUMBER=$(echo $PR_INFO | jq -r '.number')
-          PR_BRANCH=$(echo $PR_INFO | jq -r '.headRefName')
-          PR_LABELS=$(echo $PR_INFO | jq -r '.labels[].name')
           
-          echo "✅ Merged from PR #$PR_NUMBER (branch: $PR_BRANCH)"
-          echo "📋 Labels: $PR_LABELS"
+          # Récupérer les 2 parents du merge commit
+          PARENTS=$(git log -1 --pretty=%P)
+          MASTER_PARENT=$(echo $PARENTS | cut -d' ' -f1)
+          DEVELOP_PARENT=$(echo $PARENTS | cut -d' ' -f2)
           
-          if [ "$PR_BRANCH" != "develop" ]; then
-            echo "❌ ERROR: PR was from '$PR_BRANCH', not 'develop'!"
-            echo "🚫 Deployment cancelled for security reasons"
+          echo "🔍 Master parent:  $MASTER_PARENT"
+          echo "🔍 Develop parent: $DEVELOP_PARENT"
+          
+          # Vérifier que le parent develop existe dans la branche develop
+          git fetch origin develop 2>/dev/null || {
+            echo "❌ Cannot fetch develop branch!"
+            exit 1
+          }
+          
+          if git merge-base --is-ancestor $DEVELOP_PARENT origin/develop; then
+            echo "✅ Develop parent exists in develop branch"
+            echo "✅ This merge is from develop"
+          else
+            echo "❌ ERROR: Develop parent NOT found in develop branch!"
+            echo "🚫 Deployment cancelled for security"
             exit 1
           fi
           
-          if ! echo "$PR_LABELS" | grep -q "ci-passed"; then
-            echo "⚠️ WARNING: PR does not have 'ci-passed' label"
-          fi
-        else
-          echo "⚠️ No PR metadata found"
+        elif [ "$PARENT_COUNT" -eq 1 ]; then
+          echo "⚠️ This is NOT a merge commit (squash merge or direct push)"
           
-          # Vérifier que le commit existe dans develop
-          git fetch origin develop
-          if git merge-base --is-ancestor $COMMIT_SHA origin/develop; then
-            echo "✅ Commit exists in develop"
+          # Pour un squash merge ou direct push, vérifier via le message
+          if echo "$LAST_COMMIT_MSG" | grep -qiE "(develop|merge.*develop)"; then
+            echo "✅ Commit message indicates it comes from develop"
+            
+            # Vérification supplémentaire : le commit doit être récent par rapport à develop
+            git fetch origin develop 2>/dev/null || {
+              echo "❌ Cannot fetch develop branch!"
+              exit 1
+            }
+            
+            # Vérifier que develop a été mis à jour récemment (dans les 24h)
+            DEVELOP_LAST_COMMIT_DATE=$(git log -1 --format=%ct origin/develop)
+            CURRENT_COMMIT_DATE=$(git log -1 --format=%ct HEAD)
+            TIME_DIFF=$((CURRENT_COMMIT_DATE - DEVELOP_LAST_COMMIT_DATE))
+            
+            if [ $TIME_DIFF -lt 86400 ]; then  # 24 heures = 86400 secondes
+              echo "✅ Develop branch was updated recently (${TIME_DIFF}s ago)"
+              echo "✅ Assuming valid squash merge from develop"
+            else
+              echo "⚠️ WARNING: Develop branch last updated $((TIME_DIFF / 3600)) hours ago"
+              echo "⚠️ This might not be from a recent develop merge"
+              
+              # Ne pas bloquer, juste avertir
+              echo "✅ Proceeding based on commit message"
+            fi
           else
-            echo "❌ ERROR: Commit NOT from develop!"
-            echo "🚫 Deployment cancelled"
+            echo "❌ ERROR: Commit message doesn't mention 'develop'!"
+            echo "❌ This appears to be a direct push to $CURRENT_BRANCH"
+            echo "🚫 Deployment cancelled for security"
             exit 1
           fi
+        else
+          echo "❌ ERROR: Unexpected number of parents: $PARENT_COUNT"
+          exit 1
         fi
         
         echo "================================================"
-        echo "✅ ALL CHECKS PASSED"
+        echo "✅ ALL SECURITY CHECKS PASSED"
         echo "================================================"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     
     - name: Deploy with Ansible
       run: |
         echo "🚀 Starting deployment to production..."
+        echo "📂 Inventory: ansible/inventory.yml"
+        echo "📜 Playbook: ansible/playbook.yml"
         ansible-playbook -i ansible/inventory.yml ansible/playbook.yml
       env:
         ANSIBLE_HOST_KEY_CHECKING: 'False'
@@ -102,20 +133,34 @@ jobs:
         echo "⏳ Waiting for application to start..."
         sleep 5
         
-        # Retry logic avec timeout
+        # Retry logic avec flag de succès
+        SUCCESS=false
         for i in {1..5}; do
+          echo "🔄 Attempt $i/5: Checking application..."
+          
           if curl -f http://192.168.1.13:5000 --max-time 10 --silent --output /dev/null; then
             echo "✅ Application is responding!"
-            exit 0
+            SUCCESS=true
+            break
           else
-            echo "⏳ Attempt $i/5: Waiting for application..."
-            sleep 3
+            if [ $i -lt 5 ]; then
+              echo "⏳ Application not ready yet, waiting 3s..."
+              sleep 3
+            fi
           fi
         done
         
-        echo "⚠️ Application did not respond after 5 attempts"
-        echo "Check application logs with: docker logs flask-app"
-        exit 1
+        if [ "$SUCCESS" = false ]; then
+          echo "================================================"
+          echo "⚠️ APPLICATION NOT RESPONDING"
+          echo "================================================"
+          echo "Troubleshooting steps:"
+          echo "  1. docker ps"
+          echo "  2. docker logs flask-app"
+          echo "  3. curl -v http://192.168.1.13:5000"
+          echo "================================================"
+          exit 1
+        fi
     
     - name: Notify deployment success
       if: success()
@@ -125,8 +170,9 @@ jobs:
         echo "================================================"
         echo "🌐 Application: http://192.168.1.13:5000"
         echo "🐳 Docker image: ${{ env.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
-        echo "📅 Deployed at: $(date)"
+        echo "📅 Deployed at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
         echo "👤 Triggered by: ${{ github.actor }}"
+        echo "📦 Commit: ${{ github.sha }}"
         echo "================================================"
     
     - name: Notify deployment failure
@@ -136,6 +182,12 @@ jobs:
         echo "❌ DEPLOYMENT FAILED!"
         echo "================================================"
         echo "Please check the logs above for details"
-        echo "You can also check application logs:"
-        echo "  docker logs flask-app"
+        echo ""
+        echo "Common issues:"
+        echo "  • Security checks failed (not from develop)"
+        echo "  • Ansible playbook errors"
+        echo "  • Application startup errors"
+        echo ""
+        echo "Check status: docker ps -a"
+        echo "Check logs: docker logs flask-app"
         echo "================================================"

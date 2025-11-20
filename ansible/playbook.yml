@@ -5,7 +5,7 @@
   vars:
     app_name: flask-app
     docker_image: moustaphafal/flask-helloworld:latest
-    app_port: 5001
+    app_port: 5000
 
   tasks:
     - name: Install Docker prerequisites

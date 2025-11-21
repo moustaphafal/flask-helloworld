@@ -17,6 +17,8 @@
           - gnupg
           - lsb-release
           - python3-pip
+          - lsof
+          - psmisc  # Pour fuser et pkill
         state: present
         update_cache: yes
     
@@ -56,12 +58,70 @@
         source: pull
         force_source: yes
 
-    - name: Stop existing container
+    # ✅ ÉTAPE 1 : Arrêter le conteneur d'abord
+    - name: Stop existing container (if running)
+      docker_container:
+        name: "{{ app_name }}"
+        state: stopped
+      ignore_errors: yes
+
+    # ✅ ÉTAPE 2 : Attendre 3 secondes
+    - name: Wait for Docker to release resources
+      pause:
+        seconds: 3
+
+    # ✅ ÉTAPE 3 : Supprimer le conteneur
+    - name: Remove existing container (if exists)
       docker_container:
         name: "{{ app_name }}"
         state: absent
       ignore_errors: yes
 
+    # ✅ ÉTAPE 4 : Attendre encore 2 secondes
+    - name: Wait for Docker to cleanup
+      pause:
+        seconds: 2
+
+    # ✅ ÉTAPE 5 : Tuer TOUS les docker-proxy pour le port 5000
+    - name: Kill docker-proxy processes on port {{ app_port }}
+      shell: |
+        pkill -9 -f "docker-proxy.*{{ app_port }}" || true
+        sleep 1
+      ignore_errors: yes
+
+    # ✅ ÉTAPE 6 : Libérer le port avec fuser
+    - name: Force free port {{ app_port }}
+      shell: |
+        fuser -k {{ app_port }}/tcp || true
+        sleep 1
+      ignore_errors: yes
+
+    # ✅ ÉTAPE 7 : Vérifier que le port est libre
+    - name: Verify port {{ app_port }} is free
+      shell: lsof -i:{{ app_port }}
+      register: port_check
+      failed_when: false
+      changed_when: false
+
+    - name: Display port status
+      debug:
+        msg: "{{ '✅ Port ' + app_port|string + ' is FREE' if port_check.rc != 0 else '❌ Port ' + app_port|string + ' is STILL IN USE' }}"
+
+    # ✅ ÉTAPE 8 : Si le port est encore occupé, FAIL explicitement
+    - name: Fail if port is still in use
+      fail:
+        msg: |
+          ❌ ERROR: Port {{ app_port }} is still in use after cleanup!
+          
+          Process using the port:
+          {{ port_check.stdout }}
+          
+          Manual cleanup required:
+            sudo pkill -9 -f docker-proxy
+            sudo systemctl restart docker
+      when: port_check.rc == 0
+
+    # ✅ ÉTAPE 9 : Créer le nouveau conteneur
     - name: Start new container
       docker_container:
         name: "{{ app_name }}"
@@ -70,15 +130,26 @@
         restart_policy: unless-stopped
         ports:
           - "{{ app_port }}:{{ app_port }}"
+        recreate: yes
+        pull: yes
 
     - name: Wait for application to be ready
       wait_for:
         host: localhost
         port: "{{ app_port }}"
-        delay: 2
+        delay: 3
         timeout: 30
+        state: started
 
     - name: Test application endpoint
       uri:
         url: "http://localhost:{{ app_port }}"
         status_code: 200
+      retries: 5
+      delay: 3
+      register: app_test
+
+    - name: Display deployment status
+      debug:
+        msg: "✅ Flask app successfully deployed on port {{ app_port }}"
+      when: app_test.status == 200

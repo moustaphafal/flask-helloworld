@@ -131,7 +131,7 @@
         ports:
           - "{{ app_port }}:{{ app_port }}"
         recreate: yes
-        pull: yes
+        pull: no  # Image déjà téléchargée précédemment
 
     - name: Wait for application to be ready
       wait_for:
